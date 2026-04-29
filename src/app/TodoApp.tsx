@@ -74,21 +74,26 @@ const initialProjects: Project[] = [
 
 // ── localStorage Hook ──────────────────────────────────────
 function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [value, setValue] = useState<T>(() => {
-    if (typeof window === 'undefined') return initialValue;
-    try {
-      const stored = localStorage.getItem(key);
-      return stored ? (JSON.parse(stored) as T) : initialValue;
-    } catch {
-      return initialValue;
-    }
-  });
+  // SSR 和首次渲染都用 initialValue，避免 hydration 不匹配
+  const [value, setValue] = useState<T>(initialValue);
+  const [loaded, setLoaded] = useState(false);
 
+  // hydration 完成后从 localStorage 读取真实数据
   useEffect(() => {
     try {
+      const stored = localStorage.getItem(key);
+      if (stored) setValue(JSON.parse(stored) as T);
+    } catch { /* ignore */ }
+    setLoaded(true);
+  }, [key]);
+
+  // 数据变化时写入 localStorage
+  useEffect(() => {
+    if (!loaded) return;
+    try {
       localStorage.setItem(key, JSON.stringify(value));
-    } catch { /* quota exceeded — silently ignore */ }
-  }, [key, value]);
+    } catch { /* quota exceeded */ }
+  }, [key, value, loaded]);
 
   return [value, setValue];
 }
