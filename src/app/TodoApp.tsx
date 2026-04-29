@@ -853,7 +853,7 @@ export default function App() {
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
         borderBottom: '1px solid var(--border)',
-        padding: '12px 5%',
+        padding: '12px 10%',
         display: 'flex', alignItems: 'center', gap: 16,
         position: 'sticky', top: 0, zIndex: 100,
       }}>
