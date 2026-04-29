@@ -472,6 +472,7 @@ function ProjectColumn({ project, onUpdate, index, nextId, filter }: {
       border: '1px solid var(--border-light)',
       boxShadow: 'var(--shadow-md)',
       overflow: 'hidden',
+      height: 'calc(100vh - 160px)',
       animationDelay: `${index * 0.1}s`,
     }}>
       {/* Column header */}
@@ -513,7 +514,7 @@ function ProjectColumn({ project, onUpdate, index, nextId, filter }: {
       </div>
 
       {/* Todo list */}
-      <div className="stagger" style={{ flex: 1, overflowY: 'auto', maxHeight: 480, padding: '10px 14px' }}>
+      <div className="stagger" style={{ flex: 1, overflowY: 'auto', height: 'calc(100vh - 220px)', padding: '10px 14px' }}>
         {filtered.length === 0 && !adding
           ? <EmptyState projectConfig={pc} onAdd={() => setAdding(true)} />
           : filtered.map((todo, i) => (
@@ -890,7 +891,7 @@ export default function App() {
 
         <FilterBar filter={filter} setFilter={setFilter} />
 
-        <div style={{ display: 'flex', gap: 20, overflowX: 'auto', paddingBottom: 32 }}>
+        <div style={{ display: 'flex', gap: 20, overflowX: 'auto', paddingBottom: 32, alignItems: 'stretch' }}>
           {projects.map((p, i) => (
             <ProjectColumn key={p.id} project={p} onUpdate={handleUpdate} index={i} nextId={getNextId(projects)} filter={filter} />
           ))}
