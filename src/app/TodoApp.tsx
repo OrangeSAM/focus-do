@@ -8,7 +8,6 @@ type Priority = 'high' | 'mid' | 'low';
 interface Todo {
   id: number;
   text: string;
-  category: string;
   priority: Priority;
   done: boolean;
   today: boolean;
@@ -20,7 +19,6 @@ interface Project {
   name: string;
   color: string;
   icon: string;
-  categories: string[];
   todos: Todo[];
 }
 
@@ -41,33 +39,30 @@ const PROJECT_COLORS: Record<string, { accent: string; bg: string; border: strin
 const initialProjects: Project[] = [
   {
     id: 'invest', name: '投资交易', color: '#4338ca', icon: '📈',
-    categories: ['研究', '执行', '复盘'],
     todos: [
-      { id: 1,  text: '研究比亚迪 Q3 财报',    category: '研究', priority: 'high', done: false, today: true,  due: '2024-12-20' },
-      { id: 2,  text: '止盈 ETF 仓位',          category: '执行', priority: 'high', done: false, today: true,  due: null },
-      { id: 3,  text: '上月交易复盘总结',        category: '复盘', priority: 'mid',  done: true,  today: false, due: null },
-      { id: 13, text: '关注美联储议息会议',      category: '研究', priority: 'mid',  done: false, today: false, due: '2024-12-18' },
-      { id: 14, text: '调整仓位配比',            category: '执行', priority: 'low',  done: false, today: false, due: null },
+      { id: 1,  text: '研究比亚迪 Q3 财报',    priority: 'high', done: false, today: true,  due: '2024-12-20' },
+      { id: 2,  text: '止盈 ETF 仓位',          priority: 'high', done: false, today: true,  due: null },
+      { id: 3,  text: '上月交易复盘总结',        priority: 'mid',  done: true,  today: false, due: null },
+      { id: 13, text: '关注美联储议息会议',      priority: 'mid',  done: false, today: false, due: '2024-12-18' },
+      { id: 14, text: '调整仓位配比',            priority: 'low',  done: false, today: false, due: null },
     ],
   },
   {
     id: 'work', name: '工作项目', color: '#0369a1', icon: '💼',
-    categories: ['开发', '设计', '沟通'],
     todos: [
-      { id: 4,  text: '完成首页重构 PR',         category: '开发', priority: 'high', done: false, today: true,  due: '2024-12-19' },
-      { id: 5,  text: '与设计师对齐交互稿',      category: '沟通', priority: 'mid',  done: false, today: false, due: null },
-      { id: 6,  text: '修复移动端布局 bug',      category: '开发', priority: 'high', done: true,  today: false, due: null },
-      { id: 15, text: '更新组件文档',             category: '设计', priority: 'low',  done: false, today: false, due: null },
+      { id: 4,  text: '完成首页重构 PR',         priority: 'high', done: false, today: true,  due: '2024-12-19' },
+      { id: 5,  text: '与设计师对齐交互稿',      priority: 'mid',  done: false, today: false, due: null },
+      { id: 6,  text: '修复移动端布局 bug',      priority: 'high', done: true,  today: false, due: null },
+      { id: 15, text: '更新组件文档',             priority: 'low',  done: false, today: false, due: null },
     ],
   },
   {
     id: 'life', name: '生活健康', color: '#15803d', icon: '🌿',
-    categories: ['运动', '饮食', '学习'],
     todos: [
-      { id: 7,  text: '跑步 5km',                category: '运动', priority: 'mid',  done: true,  today: true,  due: null },
-      { id: 8,  text: '预约体检',                 category: '饮食', priority: 'high', done: false, today: false, due: '2024-12-25' },
-      { id: 9,  text: '读《原则》第三章',         category: '学习', priority: 'low',  done: false, today: false, due: null },
-      { id: 16, text: '冥想 10 分钟',             category: '运动', priority: 'low',  done: false, today: true,  due: null },
+      { id: 7,  text: '跑步 5km',                priority: 'mid',  done: true,  today: true,  due: null },
+      { id: 8,  text: '预约体检',                 priority: 'high', done: false, today: false, due: '2024-12-25' },
+      { id: 9,  text: '读《原则》第三章',         priority: 'low',  done: false, today: false, due: null },
+      { id: 16, text: '冥想 10 分钟',             priority: 'low',  done: false, today: true,  due: null },
     ],
   },
 ];
@@ -243,16 +238,6 @@ function TodoCard({ todo, accentColor, projectConfig, onToggle, onToggleToday, o
               {pc.label}
             </span>
 
-            {/* Category */}
-            <span style={{
-              fontSize: 10, color: 'var(--ink-faint)',
-              padding: '2px 6px', borderRadius: 99,
-              background: projectConfig.bg,
-              fontWeight: 500,
-            }}>
-              {todo.category}
-            </span>
-
             {/* Due date */}
             {due && (
               <span style={{
@@ -325,12 +310,11 @@ function TodoCard({ todo, accentColor, projectConfig, onToggle, onToggleToday, o
 }
 
 // ── Quick Add Form ────────────────────────────────────────
-function QuickAdd({ categories, projectConfig, onAdd, onCancel }: {
-  categories: string[]; projectConfig: { accent: string; bg: string; border: string; light: string };
+function QuickAdd({ projectConfig, onAdd, onCancel }: {
+  projectConfig: { accent: string; bg: string; border: string; light: string };
   onAdd: (data: Omit<Todo, 'id' | 'done'>) => void; onCancel: () => void;
 }) {
   const [text, setText] = useState('');
-  const [category, setCategory] = useState(categories[0]);
   const [priority, setPriority] = useState<Priority>('mid');
   const [due, setDue] = useState('');
   const [today, setToday] = useState(false);
@@ -341,7 +325,7 @@ function QuickAdd({ categories, projectConfig, onAdd, onCancel }: {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
-    onAdd({ text: text.trim(), category, priority, due: due || null, today });
+    onAdd({ text: text.trim(), priority, due: due || null, today });
     setText(''); setDue(''); setToday(false);
   };
 
@@ -370,9 +354,6 @@ function QuickAdd({ categories, projectConfig, onAdd, onCancel }: {
         }}
       />
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
-        <select value={category} onChange={e => setCategory(e.target.value)} style={selectStyle}>
-          {categories.map(c => <option key={c}>{c}</option>)}
-        </select>
         <select value={priority} onChange={e => setPriority(e.target.value as Priority)} style={selectStyle}>
           <option value="high">紧急</option>
           <option value="mid">重要</option>
@@ -524,7 +505,6 @@ function ProjectColumn({ project, onUpdate, index, nextId, filter }: {
       <div style={{ padding: adding ? '14px 20px 0' : '0 20px' }}>
         {adding && (
           <QuickAdd
-            categories={project.categories}
             projectConfig={pc}
             onAdd={handleAdd}
             onCancel={() => setAdding(false)}
@@ -748,7 +728,6 @@ function AddProjectColumn({ onAdd }: { onAdd: (project: Project) => void }) {
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('📊');
   const [color, setColor] = useState('#4338ca');
-  const [categoriesText, setCategoriesText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (adding) inputRef.current?.focus(); }, [adding]);
@@ -756,10 +735,8 @@ function AddProjectColumn({ onAdd }: { onAdd: (project: Project) => void }) {
   const handleSubmit = () => {
     if (!name.trim()) return;
     const id = name.trim().toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
-    const categories = categoriesText.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
-    if (categories.length === 0) categories.push('未分类');
-    onAdd({ id, name: name.trim(), color, icon, categories, todos: [] });
-    setName(''); setIcon('📊'); setColor('#4338ca'); setCategoriesText(''); setAdding(false);
+    onAdd({ id, name: name.trim(), color, icon, todos: [] });
+    setName(''); setIcon('📊'); setColor('#4338ca'); setAdding(false);
   };
 
   if (!adding) {
@@ -835,19 +812,6 @@ function AddProjectColumn({ onAdd }: { onAdd: (project: Project) => void }) {
             }} />
           ))}
         </div>
-      </div>
-
-      {/* Categories */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, color: 'var(--ink-light)', fontWeight: 500, display: 'block', marginBottom: 4 }}>分类（逗号分隔）</label>
-        <input
-          value={categoriesText} onChange={e => setCategoriesText(e.target.value)}
-          placeholder="例如：阅读, 笔记, 复盘"
-          style={{
-            width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px',
-            fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
-          }}
-        />
       </div>
 
       {/* Actions */}
