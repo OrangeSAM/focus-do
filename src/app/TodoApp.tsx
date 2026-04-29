@@ -453,19 +453,21 @@ function EmptyState({ projectConfig, onAdd }: {
 }
 
 // ── Project Column ────────────────────────────────────────
-function ProjectColumn({ project, onUpdate, index, nextId }: {
+function ProjectColumn({ project, onUpdate, index, nextId, filter }: {
   project: Project; onUpdate: (projectId: string, todos: Todo[]) => void; index: number; nextId: number;
+  filter: 'all' | 'active' | 'today' | 'done';
 }) {
   const [adding, setAdding] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'active' | 'today' | 'done'>('all');
   const pc = PROJECT_COLORS[project.id] || PROJECT_COLORS.work;
 
-  const filtered = project.todos.filter(t => {
-    if (filter === 'today')  return t.today && !t.done;
-    if (filter === 'done')   return t.done;
-    if (filter === 'active') return !t.done;
-    return true;
-  });
+  const filtered = project.todos
+    .filter(t => {
+      if (filter === 'today')  return t.today && !t.done;
+      if (filter === 'done')   return t.done;
+      if (filter === 'active') return !t.done;
+      return true;
+    })
+    .sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1));
 
   const handleToggle = (id: number) => {
     onUpdate(project.id, project.todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
@@ -481,8 +483,6 @@ function ProjectColumn({ project, onUpdate, index, nextId }: {
     onUpdate(project.id, [...project.todos, newTodo]);
     setAdding(false);
   };
-
-  const filterOptions = [['all','全部'],['active','进行中'],['today','今日'],['done','已完成']] as const;
 
   return (
     <div className="animate-fade-in-up" style={{
@@ -518,29 +518,6 @@ function ProjectColumn({ project, onUpdate, index, nextId }: {
         </div>
 
         <ProgressRing todos={project.todos} color={pc.accent} />
-      </div>
-
-      {/* Filter tabs */}
-      <div style={{ padding: '12px 20px 0' }}>
-        <div style={{ display: 'flex', gap: 3, background: 'var(--bg)', borderRadius: 10, padding: 3 }}>
-          {filterOptions.map(([val, label]) => (
-            <button
-              key={val}
-              onClick={() => setFilter(val)}
-              style={{
-                flex: 1, border: 'none', borderRadius: 8, padding: '5px 0', fontSize: 11,
-                cursor: 'pointer', fontFamily: 'inherit',
-                fontWeight: filter === val ? 600 : 400,
-                background: filter === val ? 'var(--bg-card)' : 'transparent',
-                color: filter === val ? pc.accent : 'var(--ink-light)',
-                boxShadow: filter === val ? 'var(--shadow-sm)' : 'none',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Quick add */}
@@ -730,12 +707,180 @@ function StatsBar({ projects }: { projects: Project[] }) {
   );
 }
 
+// ── Global Filter Bar ──────────────────────────────────────
+const FILTER_OPTIONS = [['all','全部'],['active','进行中'],['today','今日'],['done','已完成']] as const;
+
+function FilterBar({ filter, setFilter }: { filter: string; setFilter: (f: 'all' | 'active' | 'today' | 'done') => void }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
+    }}>
+      <span style={{ fontSize: 12, color: 'var(--ink-light)', fontWeight: 500, marginRight: 4 }}>视图</span>
+      <div style={{ display: 'flex', gap: 3, background: 'var(--bg-warm)', borderRadius: 10, padding: 3, border: '1px solid var(--border-light)' }}>
+        {FILTER_OPTIONS.map(([val, label]) => (
+          <button
+            key={val}
+            onClick={() => setFilter(val)}
+            style={{
+              border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 12,
+              cursor: 'pointer', fontFamily: 'inherit',
+              fontWeight: filter === val ? 600 : 400,
+              background: filter === val ? 'var(--bg-card)' : 'transparent',
+              color: filter === val ? 'var(--accent-indigo)' : 'var(--ink-light)',
+              boxShadow: filter === val ? 'var(--shadow-sm)' : 'none',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Add Project Column ─────────────────────────────────────
+const PROJECT_ICON_OPTIONS = ['📊', '💼', '🌿', '📚', '🎨', '🏃', '💡', '🎯', '🔧', '🏠'];
+const PROJECT_COLOR_OPTIONS = ['#4338ca', '#0369a1', '#15803d', '#b45309', '#dc2626', '#7c3aed', '#0891b2', '#65a30d'];
+
+function AddProjectColumn({ onAdd }: { onAdd: (project: Project) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [icon, setIcon] = useState('📊');
+  const [color, setColor] = useState('#4338ca');
+  const [categoriesText, setCategoriesText] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (adding) inputRef.current?.focus(); }, [adding]);
+
+  const handleSubmit = () => {
+    if (!name.trim()) return;
+    const id = name.trim().toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
+    const categories = categoriesText.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
+    if (categories.length === 0) categories.push('未分类');
+    onAdd({ id, name: name.trim(), color, icon, categories, todos: [] });
+    setName(''); setIcon('📊'); setColor('#4338ca'); setCategoriesText(''); setAdding(false);
+  };
+
+  if (!adding) {
+    return (
+      <div style={{
+        width: 350, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: '2px dashed var(--border)', borderRadius: 'var(--radius-lg)',
+        minHeight: 200, cursor: 'pointer', transition: 'all 0.2s',
+      }}
+        onClick={() => setAdding(true)}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-indigo)'; e.currentTarget.style.background = 'rgba(67,56,202,0.03)'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'transparent'; }}
+      >
+        <div style={{ textAlign: 'center', color: 'var(--ink-faint)' }}>
+          <div style={{ fontSize: 28, marginBottom: 6 }}>+</div>
+          <div style={{ fontSize: 12, fontWeight: 500 }}>新增项目</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="animate-scale-in" style={{
+      width: 350, flexShrink: 0, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)',
+      border: '1px solid var(--border-light)', boxShadow: 'var(--shadow-md)', padding: 22,
+    }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', marginBottom: 16 }}>
+        新建项目
+      </div>
+
+      {/* Name */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: 'var(--ink-light)', fontWeight: 500, display: 'block', marginBottom: 4 }}>项目名称</label>
+        <input
+          ref={inputRef} value={name} onChange={e => setName(e.target.value)}
+          placeholder="例如：读书计划"
+          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+          style={{
+            width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px',
+            fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+            transition: 'border-color 0.2s',
+          }}
+          onFocus={e => e.currentTarget.style.borderColor = color}
+          onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
+        />
+      </div>
+
+      {/* Icon */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: 'var(--ink-light)', fontWeight: 500, display: 'block', marginBottom: 6 }}>图标</label>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {PROJECT_ICON_OPTIONS.map(em => (
+            <button key={em} onClick={() => setIcon(em)} style={{
+              width: 32, height: 32, borderRadius: 8, border: icon === em ? `2px solid ${color}` : '1px solid var(--border-light)',
+              background: icon === em ? `${color}10` : 'transparent', cursor: 'pointer', fontSize: 16,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
+            }}>
+              {em}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Color */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: 'var(--ink-light)', fontWeight: 500, display: 'block', marginBottom: 6 }}>颜色</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {PROJECT_COLOR_OPTIONS.map(c => (
+            <button key={c} onClick={() => setColor(c)} style={{
+              width: 24, height: 24, borderRadius: '50%', border: color === c ? '2px solid var(--ink)' : '2px solid transparent',
+              background: c, cursor: 'pointer', transition: 'all 0.15s',
+              boxShadow: color === c ? `0 0 0 2px var(--bg-card), 0 0 0 4px ${c}` : 'none',
+            }} />
+          ))}
+        </div>
+      </div>
+
+      {/* Categories */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontSize: 11, color: 'var(--ink-light)', fontWeight: 500, display: 'block', marginBottom: 4 }}>分类（逗号分隔）</label>
+        <input
+          value={categoriesText} onChange={e => setCategoriesText(e.target.value)}
+          placeholder="例如：阅读, 笔记, 复盘"
+          style={{
+            width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px',
+            fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+          }}
+        />
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={handleSubmit} style={{
+          flex: 1, background: color, color: '#fff', border: 'none', borderRadius: 9,
+          padding: '8px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          boxShadow: `0 2px 8px ${color}30`, transition: 'all 0.2s',
+        }}>
+          创建项目
+        </button>
+        <button onClick={() => setAdding(false)} style={{
+          padding: '8px 16px', background: 'var(--border-light)', color: 'var(--ink-light)',
+          border: 'none', borderRadius: 9, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+          取消
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────
 export default function App() {
   const [projects, setProjects] = useLocalStorage<Project[]>('focusdo-projects', initialProjects);
+  const [filter, setFilter] = useState<'all' | 'active' | 'today' | 'done'>('all');
 
   const handleUpdate = useCallback((projectId: string, newTodos: Todo[]) => {
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, todos: newTodos } : p));
+  }, [setProjects]);
+
+  const handleAddProject = useCallback((project: Project) => {
+    setProjects(prev => [...prev, project]);
   }, [setProjects]);
 
   return (
@@ -779,10 +924,13 @@ export default function App() {
       <main style={{ padding: '32px 40px', maxWidth: 1400, margin: '0 auto' }}>
         <TodayFocus projects={projects} />
 
+        <FilterBar filter={filter} setFilter={setFilter} />
+
         <div style={{ display: 'flex', gap: 20, overflowX: 'auto', paddingBottom: 32 }}>
           {projects.map((p, i) => (
-            <ProjectColumn key={p.id} project={p} onUpdate={handleUpdate} index={i} nextId={getNextId(projects)} />
+            <ProjectColumn key={p.id} project={p} onUpdate={handleUpdate} index={i} nextId={getNextId(projects)} filter={filter} />
           ))}
+          <AddProjectColumn onAdd={handleAddProject} />
         </div>
       </main>
     </div>
