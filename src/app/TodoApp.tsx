@@ -72,7 +72,31 @@ const initialProjects: Project[] = [
   },
 ];
 
-let nextId = 20;
+// ── localStorage Hook ──────────────────────────────────────
+function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const [value, setValue] = useState<T>(() => {
+    if (typeof window === 'undefined') return initialValue;
+    try {
+      const stored = localStorage.getItem(key);
+      return stored ? (JSON.parse(stored) as T) : initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch { /* quota exceeded — silently ignore */ }
+  }, [key, value]);
+
+  return [value, setValue];
+}
+
+function getNextId(projects: Project[]): number {
+  const maxId = projects.flatMap(p => p.todos).reduce((max, t) => Math.max(max, t.id), 0);
+  return maxId + 1;
+}
 
 // ── Utility ───────────────────────────────────────────────
 function formatDue(due: string | null): { text: string; color: string } | null {
@@ -151,7 +175,9 @@ function TodoCard({ todo, accentColor, projectConfig, onToggle, onToggleToday, o
       className="animate-fade-in-up"
       style={{
         background: todo.done ? '#faf7f3' : 'var(--bg-card)',
-        border: `1px solid ${hover ? projectConfig.border : 'var(--border-light)'}`,
+        borderTop: `1px solid ${hover ? projectConfig.border : 'var(--border-light)'}`,
+        borderRight: `1px solid ${hover ? projectConfig.border : 'var(--border-light)'}`,
+        borderBottom: `1px solid ${hover ? projectConfig.border : 'var(--border-light)'}`,
         borderLeft: `3px solid ${todo.done ? 'var(--border)' : accentColor}`,
         borderRadius: 'var(--radius)',
         padding: '14px 16px 14px 18px',
@@ -422,8 +448,8 @@ function EmptyState({ projectConfig, onAdd }: {
 }
 
 // ── Project Column ────────────────────────────────────────
-function ProjectColumn({ project, onUpdate, index }: {
-  project: Project; onUpdate: (projectId: string, todos: Todo[]) => void; index: number;
+function ProjectColumn({ project, onUpdate, index, nextId }: {
+  project: Project; onUpdate: (projectId: string, todos: Todo[]) => void; index: number; nextId: number;
 }) {
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'today' | 'done'>('all');
@@ -446,7 +472,7 @@ function ProjectColumn({ project, onUpdate, index }: {
     onUpdate(project.id, project.todos.filter(t => t.id !== id));
   };
   const handleAdd = (data: Omit<Todo, 'id' | 'done'>) => {
-    const newTodo: Todo = { id: nextId++, ...data, done: false };
+    const newTodo: Todo = { id: nextId, ...data, done: false };
     onUpdate(project.id, [...project.todos, newTodo]);
     setAdding(false);
   };
@@ -701,11 +727,11 @@ function StatsBar({ projects }: { projects: Project[] }) {
 
 // ── Main App ──────────────────────────────────────────────
 export default function App() {
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [projects, setProjects] = useLocalStorage<Project[]>('focusdo-projects', initialProjects);
 
   const handleUpdate = useCallback((projectId: string, newTodos: Todo[]) => {
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, todos: newTodos } : p));
-  }, []);
+  }, [setProjects]);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -750,7 +776,7 @@ export default function App() {
 
         <div style={{ display: 'flex', gap: 20, overflowX: 'auto', paddingBottom: 32 }}>
           {projects.map((p, i) => (
-            <ProjectColumn key={p.id} project={p} onUpdate={handleUpdate} index={i} />
+            <ProjectColumn key={p.id} project={p} onUpdate={handleUpdate} index={i} nextId={getNextId(projects)} />
           ))}
         </div>
       </main>
