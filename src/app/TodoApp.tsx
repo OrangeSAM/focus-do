@@ -472,34 +472,32 @@ function ProjectColumn({ project, onUpdate, index, nextId, filter }: {
       border: '1px solid var(--border-light)',
       boxShadow: 'var(--shadow-md)',
       overflow: 'hidden',
-      height: 'calc(100vh - 160px)',
+      height: 'calc(100vh - 360px)',
       animationDelay: `${index * 0.1}s`,
     }}>
       {/* Column header */}
       <div style={{
-        padding: '22px 22px 18px',
+        padding: '18px 22px',
         background: `linear-gradient(180deg, ${pc.bg} 0%, var(--bg-card) 100%)`,
         borderBottom: `1px solid var(--border-light)`,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
-            width: 40, height: 40, borderRadius: 12,
+            width: 36, height: 36, borderRadius: 10,
             background: pc.light, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 18, boxShadow: `inset 0 1px 2px ${pc.accent}10`,
+            fontSize: 17, boxShadow: `inset 0 1px 2px ${pc.accent}10`,
           }}>
             {project.icon}
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{
-              fontSize: 16, fontWeight: 700, color: 'var(--ink)',
-              fontFamily: 'var(--font-display)', letterSpacing: '-0.02em',
-            }}>
-              {project.name}
-            </div>
+          <div style={{
+            fontSize: 15, fontWeight: 700, color: 'var(--ink)',
+            fontFamily: 'var(--font-display)', letterSpacing: '-0.02em',
+          }}>
+            {project.name}
           </div>
+          <div style={{ flex: 1 }} />
+          <ProgressRing todos={project.todos} color={pc.accent} />
         </div>
-
-        <ProgressRing todos={project.todos} color={pc.accent} />
       </div>
 
       {/* Quick add */}
