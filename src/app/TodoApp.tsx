@@ -885,7 +885,7 @@ export default function App() {
       </header>
 
       {/* Main content */}
-      <main style={{ padding: '32px 40px', maxWidth: 1400, margin: '0 auto' }}>
+      <main style={{ padding: '32px 5%', width: '90%', margin: '0 auto' }}>
         <TodayFocus projects={projects} />
 
         <FilterBar filter={filter} setFilter={setFilter} />
