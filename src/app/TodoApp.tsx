@@ -694,7 +694,6 @@ function FilterBar({ filter, setFilter }: { filter: string; setFilter: (f: 'all'
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
     }}>
-      <span style={{ fontSize: 12, color: 'var(--ink-light)', fontWeight: 500, marginRight: 4 }}>视图</span>
       <div style={{ display: 'flex', gap: 3, background: 'var(--bg-warm)', borderRadius: 10, padding: 3, border: '1px solid var(--border-light)' }}>
         {FILTER_OPTIONS.map(([val, label]) => (
           <button
@@ -854,7 +853,7 @@ export default function App() {
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
         borderBottom: '1px solid var(--border)',
-        padding: '12px 40px',
+        padding: '12px 5%',
         display: 'flex', alignItems: 'center', gap: 16,
         position: 'sticky', top: 0, zIndex: 100,
       }}>
