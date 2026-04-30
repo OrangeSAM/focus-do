@@ -1,6 +1,24 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  type DragStartEvent,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 
 // ── Types ─────────────────────────────────────────────────
 type Priority = 'high' | 'mid' | 'low';
@@ -37,34 +55,9 @@ const PROJECT_COLORS: Record<string, { accent: string; bg: string; border: strin
 
 // ── Initial data ──────────────────────────────────────────
 const initialProjects: Project[] = [
-  {
-    id: 'invest', name: '投资交易', color: '#4338ca', icon: '📈',
-    todos: [
-      { id: 1,  text: '研究比亚迪 Q3 财报',    priority: 'high', done: false, today: true,  due: '2024-12-20' },
-      { id: 2,  text: '止盈 ETF 仓位',          priority: 'high', done: false, today: true,  due: null },
-      { id: 3,  text: '上月交易复盘总结',        priority: 'mid',  done: true,  today: false, due: null },
-      { id: 13, text: '关注美联储议息会议',      priority: 'mid',  done: false, today: false, due: '2024-12-18' },
-      { id: 14, text: '调整仓位配比',            priority: 'low',  done: false, today: false, due: null },
-    ],
-  },
-  {
-    id: 'work', name: '工作项目', color: '#0369a1', icon: '💼',
-    todos: [
-      { id: 4,  text: '完成首页重构 PR',         priority: 'high', done: false, today: true,  due: '2024-12-19' },
-      { id: 5,  text: '与设计师对齐交互稿',      priority: 'mid',  done: false, today: false, due: null },
-      { id: 6,  text: '修复移动端布局 bug',      priority: 'high', done: true,  today: false, due: null },
-      { id: 15, text: '更新组件文档',             priority: 'low',  done: false, today: false, due: null },
-    ],
-  },
-  {
-    id: 'life', name: '生活健康', color: '#15803d', icon: '🌿',
-    todos: [
-      { id: 7,  text: '跑步 5km',                priority: 'mid',  done: true,  today: true,  due: null },
-      { id: 8,  text: '预约体检',                 priority: 'high', done: false, today: false, due: '2024-12-25' },
-      { id: 9,  text: '读《原则》第三章',         priority: 'low',  done: false, today: false, due: null },
-      { id: 16, text: '冥想 10 分钟',             priority: 'low',  done: false, today: true,  due: null },
-    ],
-  },
+  { id: 'invest', name: '投资交易', color: '#4338ca', icon: '📈', todos: [] },
+  { id: 'work',   name: '工作项目', color: '#0369a1', icon: '💼', todos: [] },
+  { id: 'life',   name: '生活健康', color: '#15803d', icon: '🌿', todos: [] },
 ];
 
 // ── localStorage Hook ──────────────────────────────────────
@@ -433,10 +426,87 @@ function EmptyState({ projectConfig, onAdd }: {
   );
 }
 
-// ── Project Column ────────────────────────────────────────
-function ProjectColumn({ project, onUpdate, index, nextId, filter }: {
-  project: Project; onUpdate: (projectId: string, todos: Todo[]) => void; index: number; nextId: number;
+// ── Drag Handle ──────────────────────────────────────────
+function DragHandle({ listeners, attributes }: {
+  listeners: ReturnType<typeof useSortable>['listeners'];
+  attributes: ReturnType<typeof useSortable>['attributes'];
+}) {
+  return (
+    <button
+      {...listeners}
+      {...attributes}
+      aria-label="拖拽排序"
+      style={{
+        background: 'none', border: 'none', cursor: 'grab',
+        padding: '4px 8px', borderRadius: 6,
+        color: 'var(--ink-faint)', display: 'flex',
+        alignItems: 'center', transition: 'all 0.2s',
+        touchAction: 'none',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.color = 'var(--ink-light)';
+        e.currentTarget.style.background = 'var(--border-light)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.color = 'var(--ink-faint)';
+        e.currentTarget.style.background = 'none';
+      }}
+    >
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <circle cx="5" cy="3" r="1.5" />
+        <circle cx="11" cy="3" r="1.5" />
+        <circle cx="5" cy="8" r="1.5" />
+        <circle cx="11" cy="8" r="1.5" />
+        <circle cx="5" cy="13" r="1.5" />
+        <circle cx="11" cy="13" r="1.5" />
+      </svg>
+    </button>
+  );
+}
+
+// ── Sortable Project Column Wrapper ──────────────────────
+function SortableProjectColumn({ project, onUpdate, nextId, filter }: {
+  project: Project;
+  onUpdate: (projectId: string, todos: Todo[]) => void;
+  nextId: number;
   filter: 'all' | 'active' | 'today' | 'done';
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: project.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <ProjectColumn
+        project={project}
+        onUpdate={onUpdate}
+        nextId={nextId}
+        filter={filter}
+        dragListeners={listeners}
+        dragAttributes={attributes}
+      />
+    </div>
+  );
+}
+
+// ── Project Column ────────────────────────────────────────
+function ProjectColumn({ project, onUpdate, nextId, filter, dragListeners, dragAttributes }: {
+  project: Project; onUpdate: (projectId: string, todos: Todo[]) => void; nextId: number;
+  filter: 'all' | 'active' | 'today' | 'done';
+  dragListeners?: ReturnType<typeof useSortable>['listeners'];
+  dragAttributes?: ReturnType<typeof useSortable>['attributes'];
 }) {
   const [adding, setAdding] = useState(false);
   const pc = PROJECT_COLORS[project.id] || PROJECT_COLORS.work;
@@ -473,7 +543,6 @@ function ProjectColumn({ project, onUpdate, index, nextId, filter }: {
       boxShadow: 'var(--shadow-md)',
       overflow: 'hidden',
       height: 'calc(100vh - 360px)',
-      animationDelay: `${index * 0.1}s`,
     }}>
       {/* Column header */}
       <div style={{
@@ -495,6 +564,10 @@ function ProjectColumn({ project, onUpdate, index, nextId, filter }: {
           }}>
             {project.name}
           </div>
+          {/* Drag handle */}
+          {dragListeners && dragAttributes && (
+            <DragHandle listeners={dragListeners} attributes={dragAttributes} />
+          )}
           <div style={{ flex: 1 }} />
           <ProgressRing todos={project.todos} color={pc.accent} />
         </div>
@@ -836,6 +909,20 @@ function AddProjectColumn({ onAdd }: { onAdd: (project: Project) => void }) {
 export default function App() {
   const [projects, setProjects] = useLocalStorage<Project[]>('focusdo-projects', initialProjects);
   const [filter, setFilter] = useState<'all' | 'active' | 'today' | 'done'>('all');
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   const handleUpdate = useCallback((projectId: string, newTodos: Todo[]) => {
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, todos: newTodos } : p));
@@ -844,6 +931,25 @@ export default function App() {
   const handleAddProject = useCallback((project: Project) => {
     setProjects(prev => [...prev, project]);
   }, [setProjects]);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (over && active.id !== over.id) {
+      setProjects(prev => {
+        const oldIndex = prev.findIndex(p => p.id === active.id);
+        const newIndex = prev.findIndex(p => p.id === over.id);
+        return arrayMove(prev, oldIndex, newIndex);
+      });
+    }
+  }, [setProjects]);
+
+  const modifiers = useMemo(() => [restrictToHorizontalAxis, restrictToParentElement], []);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -889,9 +995,57 @@ export default function App() {
         <FilterBar filter={filter} setFilter={setFilter} />
 
         <div style={{ display: 'flex', gap: 20, overflowX: 'auto', paddingBottom: 32, alignItems: 'stretch' }}>
-          {projects.map((p, i) => (
-            <ProjectColumn key={p.id} project={p} onUpdate={handleUpdate} index={i} nextId={getNextId(projects)} filter={filter} />
-          ))}
+          {mounted ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              modifiers={modifiers}
+            >
+              <SortableContext
+                items={projects.map(p => p.id)}
+                strategy={horizontalListSortingStrategy}
+              >
+                {projects.map(p => (
+                  <SortableProjectColumn
+                    key={p.id}
+                    project={p}
+                    onUpdate={handleUpdate}
+                    nextId={getNextId(projects)}
+                    filter={filter}
+                  />
+                ))}
+              </SortableContext>
+
+              <DragOverlay dropAnimation={{
+                duration: 250,
+                easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+              }}>
+                {activeId ? (
+                  <div style={{ width: 350, opacity: 0.92 }}>
+                    <ProjectColumn
+                      project={projects.find(p => p.id === activeId)!}
+                      onUpdate={() => {}}
+                      nextId={getNextId(projects)}
+                      filter={filter}
+                    />
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          ) : (
+            projects.map(p => (
+              <ProjectColumn
+                key={p.id}
+                project={p}
+                onUpdate={handleUpdate}
+                nextId={getNextId(projects)}
+                filter={filter}
+              />
+            ))
+          )}
+
           <AddProjectColumn onAdd={handleAddProject} />
         </div>
       </main>
