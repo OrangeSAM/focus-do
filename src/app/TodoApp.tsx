@@ -48,6 +48,19 @@ const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; bg: stri
   low:  { label: '日常', color: '#6b5e54', bg: '#f5f0eb', dot: '#a89e94' },
 };
 
+// Generate color scheme from a single hex color
+function generateColorScheme(hex: string): { accent: string; bg: string; border: string; light: string } {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+
+  const bg = `rgb(${Math.round(r + (255 - r) * 0.85)}, ${Math.round(g + (255 - g) * 0.85)}, ${Math.round(b + (255 - b) * 0.85)})`;
+  const light = `rgb(${Math.round(r + (255 - r) * 0.7)}, ${Math.round(g + (255 - g) * 0.7)}, ${Math.round(b + (255 - b) * 0.7)})`;
+  const border = `rgb(${Math.round(r + (255 - r) * 0.4)}, ${Math.round(g + (255 - g) * 0.4)}, ${Math.round(b + (255 - b) * 0.4)})`;
+
+  return { accent: hex, bg, border, light };
+}
+
 const PROJECT_COLORS: Record<string, { accent: string; bg: string; border: string; light: string }> = {
   invest: { accent: '#4338ca', bg: '#e8ecfd', border: '#a5b4fc', light: '#dbeafe' },
   work:   { accent: '#0369a1', bg: '#cce8f7', border: '#7dd3fc', light: '#bae6fd' },
@@ -440,42 +453,6 @@ function EmptyState({ projectConfig, onAdd }: {
 }
 
 // ── Drag Handle ──────────────────────────────────────────
-function DragHandle({ listeners, attributes }: {
-  listeners: ReturnType<typeof useSortable>['listeners'];
-  attributes: ReturnType<typeof useSortable>['attributes'];
-}) {
-  return (
-    <button
-      {...listeners}
-      {...attributes}
-      aria-label="拖拽排序"
-      style={{
-        background: 'none', border: 'none', cursor: 'grab',
-        padding: '4px 8px', borderRadius: 6,
-        color: 'var(--ink-faint)', display: 'flex',
-        alignItems: 'center', transition: 'all 0.2s',
-        touchAction: 'none',
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.color = 'var(--ink-light)';
-        e.currentTarget.style.background = 'var(--border-light)';
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.color = 'var(--ink-faint)';
-        e.currentTarget.style.background = 'none';
-      }}
-    >
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <circle cx="5" cy="3" r="1.5" />
-        <circle cx="11" cy="3" r="1.5" />
-        <circle cx="5" cy="8" r="1.5" />
-        <circle cx="11" cy="8" r="1.5" />
-        <circle cx="5" cy="13" r="1.5" />
-        <circle cx="11" cy="13" r="1.5" />
-      </svg>
-    </button>
-  );
-}
 
 // ── Sortable Project Column Wrapper ──────────────────────
 function SortableProjectColumn({ project, onUpdate, nextId, filter, flippingProjectId, onArchive }: {
@@ -528,7 +505,7 @@ function ProjectColumn({ project, onUpdate, nextId, filter, dragListeners, dragA
   onArchive?: (projectId: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
-  const pc = PROJECT_COLORS[project.id] || PROJECT_COLORS.work;
+  const pc = PROJECT_COLORS[project.id] || generateColorScheme(project.color);
 
   const filtered = project.todos
     .filter(t => {
@@ -563,12 +540,31 @@ function ProjectColumn({ project, onUpdate, nextId, filter, dragListeners, dragA
       overflow: 'hidden',
       height: 'calc(100vh - 260px)',
     }}>
-      {/* Column header */}
-      <div style={{
-        padding: '18px 22px',
-        background: `linear-gradient(180deg, ${pc.bg} 0%, var(--bg-card) 100%)`,
-        borderBottom: `1px solid var(--border-light)`,
-      }}>
+      {/* Column header - entire header is draggable */}
+      <div
+        style={{
+          position: 'relative',
+          padding: '18px 22px',
+          background: `linear-gradient(180deg, ${pc.bg} 0%, var(--bg-card) 100%)`,
+          borderBottom: `1px solid var(--border-light)`,
+        }}
+      >
+        {/* Invisible drag handle covering entire header */}
+        {dragListeners && dragAttributes && (
+          <div
+            {...dragListeners}
+            {...dragAttributes}
+            aria-label="拖拽排序"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              cursor: 'grab',
+              touchAction: 'none',
+              userSelect: 'none',
+              zIndex: 1,
+            }}
+          />
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 10,
@@ -583,19 +579,16 @@ function ProjectColumn({ project, onUpdate, nextId, filter, dragListeners, dragA
           }}>
             {project.name}
           </div>
-          {/* Drag handle */}
-          {dragListeners && dragAttributes && (
-            <DragHandle listeners={dragListeners} attributes={dragAttributes} />
-          )}
           {/* Archive button */}
           {onArchive && (
             <button
-              onClick={() => onArchive(project.id)}
+              onClick={(e) => { e.stopPropagation(); onArchive(project.id); }}
               title="归档项目"
               style={{
                 border: 'none', borderRadius: 8, padding: '4px 6px', cursor: 'pointer', fontSize: 12,
                 background: 'transparent', color: 'var(--ink-faint)',
                 transition: 'all 0.2s ease',
+                position: 'relative', zIndex: 2,
               }}
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--border-light)'; e.currentTarget.style.color = 'var(--ink-light)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-faint)'; }}
@@ -723,7 +716,7 @@ function TodayFocus({ projects }: { projects: Project[] }) {
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {todayItems.map(t => {
-          const pc = PROJECT_COLORS[t.projectId] || PROJECT_COLORS.work;
+          const pc = PROJECT_COLORS[t.projectId] || generateColorScheme(t.projectColor);
           return (
             <div key={t.id} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -1047,7 +1040,7 @@ function ArchiveDrawer({ projects, onClose, onUnarchive }: {
               }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: 10,
-                  background: PROJECT_COLORS[p.id]?.bg || 'var(--border-light)',
+                  background: (PROJECT_COLORS[p.id] || generateColorScheme(p.color)).bg,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 17,
                 }}>
@@ -1062,15 +1055,15 @@ function ArchiveDrawer({ projects, onClose, onUnarchive }: {
                 <button
                   onClick={() => onUnarchive(p.id)}
                   style={{
-                    border: `1px solid ${PROJECT_COLORS[p.id]?.accent || 'var(--accent-indigo)'}`,
+                    border: `1px solid ${(PROJECT_COLORS[p.id] || generateColorScheme(p.color)).accent}`,
                     borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
                     background: 'transparent',
-                    color: PROJECT_COLORS[p.id]?.accent || 'var(--accent-indigo)',
+                    color: (PROJECT_COLORS[p.id] || generateColorScheme(p.color)).accent,
                     fontSize: 12, fontWeight: 600,
                     transition: 'all 0.2s',
                   }}
                   onMouseEnter={e => {
-                    e.currentTarget.style.background = PROJECT_COLORS[p.id]?.light || 'rgba(67,56,202,0.1)';
+                    e.currentTarget.style.background = (PROJECT_COLORS[p.id] || generateColorScheme(p.color)).light;
                   }}
                   onMouseLeave={e => {
                     e.currentTarget.style.background = 'transparent';
