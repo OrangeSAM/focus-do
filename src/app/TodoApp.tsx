@@ -38,6 +38,7 @@ interface Project {
   color: string;
   icon: string;
   todos: Todo[];
+  archived: boolean;
 }
 
 // ── Design tokens ─────────────────────────────────────────
@@ -55,9 +56,9 @@ const PROJECT_COLORS: Record<string, { accent: string; bg: string; border: strin
 
 // ── Initial data ──────────────────────────────────────────
 const initialProjects: Project[] = [
-  { id: 'invest', name: '投资交易', color: '#4338ca', icon: '📈', todos: [] },
-  { id: 'work',   name: '工作项目', color: '#0369a1', icon: '💼', todos: [] },
-  { id: 'life',   name: '生活健康', color: '#15803d', icon: '🌿', todos: [] },
+  { id: 'invest', name: '投资交易', color: '#4338ca', icon: '📈', todos: [], archived: false },
+  { id: 'work',   name: '工作项目', color: '#0369a1', icon: '💼', todos: [], archived: false },
+  { id: 'life',   name: '生活健康', color: '#15803d', icon: '🌿', todos: [], archived: false },
 ];
 
 // ── localStorage Hook ──────────────────────────────────────
@@ -70,7 +71,19 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<Re
   useEffect(() => {
     try {
       const stored = localStorage.getItem(key);
-      if (stored) setValue(JSON.parse(stored) as T);
+      if (stored) {
+        const parsed = JSON.parse(stored) as T;
+        // 数据迁移：为旧数据注入 archived 字段
+        if (key === 'focusdo-projects' && Array.isArray(parsed)) {
+          const migrated = (parsed as Project[]).map(p => ({
+            ...p,
+            archived: p.archived ?? false,
+          }));
+          setValue(migrated as T);
+        } else {
+          setValue(parsed);
+        }
+      }
     } catch { /* ignore */ }
     setLoaded(true);
   }, [key]);
@@ -465,11 +478,13 @@ function DragHandle({ listeners, attributes }: {
 }
 
 // ── Sortable Project Column Wrapper ──────────────────────
-function SortableProjectColumn({ project, onUpdate, nextId, filter }: {
+function SortableProjectColumn({ project, onUpdate, nextId, filter, flippingProjectId, onArchive }: {
   project: Project;
   onUpdate: (projectId: string, todos: Todo[]) => void;
   nextId: number;
   filter: 'all' | 'active' | 'today' | 'done';
+  flippingProjectId: string | null;
+  onArchive: (projectId: string) => void;
 }) {
   const {
     attributes,
@@ -496,17 +511,21 @@ function SortableProjectColumn({ project, onUpdate, nextId, filter }: {
         filter={filter}
         dragListeners={listeners}
         dragAttributes={attributes}
+        isFlipping={flippingProjectId === project.id}
+        onArchive={onArchive}
       />
     </div>
   );
 }
 
 // ── Project Column ────────────────────────────────────────
-function ProjectColumn({ project, onUpdate, nextId, filter, dragListeners, dragAttributes }: {
+function ProjectColumn({ project, onUpdate, nextId, filter, dragListeners, dragAttributes, isFlipping, onArchive }: {
   project: Project; onUpdate: (projectId: string, todos: Todo[]) => void; nextId: number;
   filter: 'all' | 'active' | 'today' | 'done';
   dragListeners?: ReturnType<typeof useSortable>['listeners'];
   dragAttributes?: ReturnType<typeof useSortable>['attributes'];
+  isFlipping?: boolean;
+  onArchive?: (projectId: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const pc = PROJECT_COLORS[project.id] || PROJECT_COLORS.work;
@@ -536,13 +555,13 @@ function ProjectColumn({ project, onUpdate, nextId, filter, dragListeners, dragA
   };
 
   return (
-    <div className="animate-fade-in-up" style={{
+    <div className={`animate-fade-in-up ${isFlipping ? 'animate-flip-out' : ''}`} style={{
       background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)',
       padding: 0, width: 350, flexShrink: 0, display: 'flex', flexDirection: 'column',
       border: '1px solid var(--border-light)',
       boxShadow: 'var(--shadow-md)',
       overflow: 'hidden',
-      height: 'calc(100vh - 360px)',
+      height: 'calc(100vh - 260px)',
     }}>
       {/* Column header */}
       <div style={{
@@ -567,6 +586,26 @@ function ProjectColumn({ project, onUpdate, nextId, filter, dragListeners, dragA
           {/* Drag handle */}
           {dragListeners && dragAttributes && (
             <DragHandle listeners={dragListeners} attributes={dragAttributes} />
+          )}
+          {/* Archive button */}
+          {onArchive && (
+            <button
+              onClick={() => onArchive(project.id)}
+              title="归档项目"
+              style={{
+                border: 'none', borderRadius: 8, padding: '4px 6px', cursor: 'pointer', fontSize: 12,
+                background: 'transparent', color: 'var(--ink-faint)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--border-light)'; e.currentTarget.style.color = 'var(--ink-light)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-faint)'; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M2 3h12v10H2V3z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                <path d="M6 3V1h4v2" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                <path d="M2 7h12" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+            </button>
           )}
           <div style={{ flex: 1 }} />
           <ProgressRing todos={project.todos} color={pc.accent} />
@@ -762,7 +801,12 @@ function StatsBar({ projects }: { projects: Project[] }) {
 // ── Global Filter Bar ──────────────────────────────────────
 const FILTER_OPTIONS = [['all','全部'],['active','进行中'],['today','今日'],['done','已完成']] as const;
 
-function FilterBar({ filter, setFilter }: { filter: string; setFilter: (f: 'all' | 'active' | 'today' | 'done') => void }) {
+function FilterBar({ filter, setFilter, archivedCount, onShowArchive }: {
+  filter: string;
+  setFilter: (f: 'all' | 'active' | 'today' | 'done') => void;
+  archivedCount: number;
+  onShowArchive: () => void;
+}) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
@@ -786,6 +830,34 @@ function FilterBar({ filter, setFilter }: { filter: string; setFilter: (f: 'all'
           </button>
         ))}
       </div>
+      <div style={{ flex: 1 }} />
+      <button
+        onClick={onShowArchive}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          border: '1px solid var(--border-light)', borderRadius: 10, padding: '5px 12px',
+          background: 'var(--bg-card)', cursor: 'pointer', fontFamily: 'inherit',
+          fontSize: 12, color: 'var(--ink-light)',
+          transition: 'all 0.2s ease',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-indigo)'; e.currentTarget.style.color = 'var(--accent-indigo)'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-light)'; e.currentTarget.style.color = 'var(--ink-light)'; }}
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M2 3h12v10H2V3z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+          <path d="M6 3V1h4v2" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+          <path d="M2 7h12" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+        查看归档
+        {archivedCount > 0 && (
+          <span style={{
+            background: 'var(--accent-indigo)', color: '#fff',
+            borderRadius: 99, padding: '1px 6px', fontSize: 10, fontWeight: 600,
+          }}>
+            {archivedCount}
+          </span>
+        )}
+      </button>
     </div>
   );
 }
@@ -806,7 +878,7 @@ function AddProjectColumn({ onAdd }: { onAdd: (project: Project) => void }) {
   const handleSubmit = () => {
     if (!name.trim()) return;
     const id = name.trim().toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
-    onAdd({ id, name: name.trim(), color, icon, todos: [] });
+    onAdd({ id, name: name.trim(), color, icon, todos: [], archived: false });
     setName(''); setIcon('📊'); setColor('#4338ca'); setAdding(false);
   };
 
@@ -905,12 +977,127 @@ function AddProjectColumn({ onAdd }: { onAdd: (project: Project) => void }) {
   );
 }
 
+// ── Archive Drawer ────────────────────────────────────────
+function ArchiveDrawer({ projects, onClose, onUnarchive }: {
+  projects: Project[];
+  onClose: () => void;
+  onUnarchive: (projectId: string) => void;
+}) {
+  const archivedProjects = projects.filter(p => p.archived);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(0,0,0,0.3)',
+          animation: 'fadeIn 0.3s ease-out',
+        }}
+      />
+      {/* Drawer */}
+      <div style={{
+        position: 'relative', width: 400, maxWidth: '90vw',
+        background: 'var(--bg-card)',
+        boxShadow: 'var(--shadow-lg)',
+        animation: 'slideInRight 0.3s ease-out',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '20px 24px',
+          borderBottom: '1px solid var(--border-light)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>
+            已归档项目
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer',
+              background: 'transparent', color: 'var(--ink-faint)',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--border-light)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        {/* List */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+          {archivedProjects.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--ink-light)' }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>📦</div>
+              <div style={{ fontSize: 13 }}>暂无归档项目</div>
+            </div>
+          ) : (
+            archivedProjects.map(p => (
+              <div key={p.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '14px 16px', marginBottom: 8,
+                background: 'var(--bg)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border-light)',
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: PROJECT_COLORS[p.id]?.bg || 'var(--border-light)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 17,
+                }}>
+                  {p.icon}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-light)', marginTop: 2 }}>
+                    {p.todos.length} 个待办
+                  </div>
+                </div>
+                <button
+                  onClick={() => onUnarchive(p.id)}
+                  style={{
+                    border: `1px solid ${PROJECT_COLORS[p.id]?.accent || 'var(--accent-indigo)'}`,
+                    borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
+                    background: 'transparent',
+                    color: PROJECT_COLORS[p.id]?.accent || 'var(--accent-indigo)',
+                    fontSize: 12, fontWeight: 600,
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = PROJECT_COLORS[p.id]?.light || 'rgba(67,56,202,0.1)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  恢复
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Constants ─────────────────────────────────────────────
+const FLIP_DURATION = 700;
+
 // ── Main App ──────────────────────────────────────────────
 export default function App() {
   const [projects, setProjects] = useLocalStorage<Project[]>('focusdo-projects', initialProjects);
   const [filter, setFilter] = useState<'all' | 'active' | 'today' | 'done'>('all');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [showArchiveDrawer, setShowArchiveDrawer] = useState(false);
+  const [flippingProjectId, setFlippingProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -949,7 +1136,23 @@ export default function App() {
     }
   }, [setProjects]);
 
+  const handleArchive = useCallback((projectId: string) => {
+    setFlippingProjectId(projectId);
+    setTimeout(() => {
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, archived: true } : p));
+      setFlippingProjectId(null);
+    }, FLIP_DURATION);
+  }, [setProjects]);
+
+  const handleUnarchive = useCallback((projectId: string) => {
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, archived: false } : p));
+    setShowArchiveDrawer(false);
+  }, [setProjects]);
+
   const modifiers = useMemo(() => [restrictToHorizontalAxis, restrictToParentElement], []);
+
+  const activeProjects = useMemo(() => projects.filter(p => !p.archived), [projects]);
+  const archivedCount = useMemo(() => projects.filter(p => p.archived).length, [projects]);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -992,7 +1195,12 @@ export default function App() {
       <main style={{ padding: '32px 5%', width: '90%', margin: '0 auto' }}>
         <TodayFocus projects={projects} />
 
-        <FilterBar filter={filter} setFilter={setFilter} />
+        <FilterBar
+          filter={filter}
+          setFilter={setFilter}
+          archivedCount={archivedCount}
+          onShowArchive={() => setShowArchiveDrawer(true)}
+        />
 
         <div style={{ display: 'flex', gap: 20, overflowX: 'auto', paddingBottom: 32, alignItems: 'stretch' }}>
           {mounted ? (
@@ -1004,16 +1212,18 @@ export default function App() {
               modifiers={modifiers}
             >
               <SortableContext
-                items={projects.map(p => p.id)}
+                items={activeProjects.map(p => p.id)}
                 strategy={horizontalListSortingStrategy}
               >
-                {projects.map(p => (
+                {activeProjects.map(p => (
                   <SortableProjectColumn
                     key={p.id}
                     project={p}
                     onUpdate={handleUpdate}
                     nextId={getNextId(projects)}
                     filter={filter}
+                    flippingProjectId={flippingProjectId}
+                    onArchive={handleArchive}
                   />
                 ))}
               </SortableContext>
@@ -1025,7 +1235,7 @@ export default function App() {
                 {activeId ? (
                   <div style={{ width: 350, opacity: 0.92 }}>
                     <ProjectColumn
-                      project={projects.find(p => p.id === activeId)!}
+                      project={activeProjects.find(p => p.id === activeId)!}
                       onUpdate={() => {}}
                       nextId={getNextId(projects)}
                       filter={filter}
@@ -1035,7 +1245,7 @@ export default function App() {
               </DragOverlay>
             </DndContext>
           ) : (
-            projects.map(p => (
+            activeProjects.map(p => (
               <ProjectColumn
                 key={p.id}
                 project={p}
@@ -1049,6 +1259,15 @@ export default function App() {
           <AddProjectColumn onAdd={handleAddProject} />
         </div>
       </main>
+
+      {/* Archive Drawer */}
+      {showArchiveDrawer && (
+        <ArchiveDrawer
+          projects={projects}
+          onClose={() => setShowArchiveDrawer(false)}
+          onUnarchive={handleUnarchive}
+        />
+      )}
     </div>
   );
 }
